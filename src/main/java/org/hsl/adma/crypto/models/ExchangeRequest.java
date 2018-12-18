@@ -1,17 +1,17 @@
 package org.hsl.adma.crypto.models;
 
+import javax.validation.constraints.NotEmpty;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ExchangeRequest {
-	private Long userId;
+	
+	@NotEmpty(message = "O campo dna é obrigatório")
 	private String dna;
+
+	@NotEmpty(message = "O campo publicKey é obrigatório")
 	private String publicKey;
-	
-	public Long getUserId() {
-		return userId;
-	}
-	
-	public void setUserId(Long userId) {
-		this.userId = userId;
-	}
 	
 	public String getDna() {
 		return dna;

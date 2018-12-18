@@ -1,26 +1,40 @@
 package org.hsl.adma.crypto.services;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
+import org.hsl.adma.crypto.exceptions.BucketDoesNotExistException;
 import org.hsl.adma.crypto.models.ExchangeRequest;
 import org.hsl.adma.crypto.models.ExchangeResponse;
+import org.hsl.adma.crypto.models.UserPoolInfo;
+import org.hsl.adma.crypto.repositories.ExchangeRepositoriy;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
-import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.S3Object;
 
 @Service
 public class ExchangeServiceImpl implements ExchangeService {
 
-	private static final BigInteger prime = BigInteger.valueOf(14731);
-	private static final BigInteger base = BigInteger.valueOf(5);
-    private static AmazonDynamoDB client = AmazonDynamoDBClientBuilder.standard().withRegion("us-east-1").build();
-    private static DynamoDB dynamoDB = new DynamoDB(client);
-    
+	@Autowired
+	ExchangeRepositoriy exchangeRepository;
+	
+	private AmazonS3 amazonS3 = AmazonS3ClientBuilder.standard().withRegion("us-east-1").build();
+	private UserPoolInfo info;
+	
+	public ExchangeServiceImpl() throws IOException {
+		super();	
+		info = getPoolInfo();
+	}
+
 	@Override
 	public ExchangeResponse exchangeKeys(ExchangeRequest request) {
 		BigInteger callerPublicKey = BigInteger.valueOf(Long.parseLong(request.getPublicKey()));
@@ -33,6 +47,22 @@ public class ExchangeServiceImpl implements ExchangeService {
 		
 		return new ExchangeResponse(ownerPublicKey.toString(), expirationDate);
 	}
+
+	private UserPoolInfo getPoolInfo() throws IOException {
+		if (!amazonS3.doesBucketExistV2("adma-config") || !amazonS3.doesObjectExist("adma-config", "cripto-public.json")) {
+			throw new BucketDoesNotExistException();
+		} else {
+			S3Object s3Object = amazonS3.getObject("adma-config", "cripto-public.json");
+			InputStream stream = s3Object.getObjectContent();
+			String jsonString = StreamUtils.copyToString(stream, StandardCharsets.UTF_8);
+			JSONObject json = new JSONObject(jsonString);
+			
+			BigInteger prime = BigInteger.valueOf(Long.valueOf(json.get("prime").toString()));
+			BigInteger base = BigInteger.valueOf(Long.valueOf(json.get("base").toString()));
+			
+			return new UserPoolInfo(prime, base);
+		}
+	}
 	
 	private BigInteger generatePrivateKey() {
 		Double innerExpression = ((Math.random() * 9999) + 1);
@@ -43,32 +73,22 @@ public class ExchangeServiceImpl implements ExchangeService {
 	}
 	
 	private BigInteger generateExchangeKey(BigInteger privateKey) {
-		return base.modPow(privateKey, prime); 
+		return info.getBase().modPow(privateKey, info.getPrime()); 
 	}	
 	
 	private BigInteger generateSecretKey(BigInteger exchangeKey, BigInteger privateKey) {
-		return exchangeKey.modPow(privateKey, prime); 
+		return exchangeKey.modPow(privateKey, info.getPrime()); 
 	}
 	
 	private String generateExpirationDate() {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 	    LocalDateTime today = LocalDateTime.now();
 	    today = today.plusHours(1);
 
-		return today.toString();
+        return today.format(formatter);
 	}
 	
 	private void saveSecretKey(String dna, String key, String expirationDate) {
-		Table table = dynamoDB.getTable("CryptoKeys");
-		
-		try {
-			Item item = new Item()
-					.withPrimaryKey("dna", dna)
-					.withString("key", "key")
-	                .withString("expirationDate", "expirationDate");
-			
-			table.putItem(item);			
-		} catch (Exception err) {
-			System.out.println(err);
-		}
+		exchangeRepository.saveKey(dna, key, expirationDate);
 	}	
 }

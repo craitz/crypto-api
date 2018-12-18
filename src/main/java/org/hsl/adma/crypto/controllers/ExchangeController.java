@@ -1,5 +1,7 @@
 package org.hsl.adma.crypto.controllers;
 
+import javax.validation.Valid;
+
 import org.hsl.adma.crypto.models.ExchangeRequest;
 import org.hsl.adma.crypto.models.ExchangeResponse;
 import org.hsl.adma.crypto.services.ExchangeService;
@@ -17,7 +19,7 @@ public class ExchangeController {
 	private ExchangeService exchangeService;
 	
 	@RequestMapping("/exchange-keys")
-	public ResponseEntity<ExchangeResponse> exchangeKeys(@RequestBody ExchangeRequest request) {
+	public ResponseEntity<ExchangeResponse> exchangeKeys(@Valid @RequestBody ExchangeRequest request) {
 		return ResponseEntity.ok().body(exchangeService.exchangeKeys(request));
 	}
 }
